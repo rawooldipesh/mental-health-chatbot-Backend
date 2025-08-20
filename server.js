@@ -4,7 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import { connectDB } from "./config/db.js";
-import authRoutes from "./routes/auth.js";
+import authRoutes from "./routes/authRoutes.js";
 import sessionRoutes from "./routes/sessions.js";
 import messageRoutes from "./routes/messages.js";
 import { auth } from "./middleware/auth.js";

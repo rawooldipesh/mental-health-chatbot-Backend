@@ -21,10 +21,21 @@ router.post("/send", async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: message }],
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are EmpathAI, a supportive and empathetic mental health companion. " +
+            "Always reply in a calm, understanding, and non-judgmental way. " +
+            "Encourage positive coping strategies, active listening, and self-care. " +
+            "If the user expresses thoughts of self-harm, encourage them to seek help from a trusted person or professional, and provide resources such as helpline numbers.",
+        },
+        { role: "user", content: message },
+      ],
     });
 
-    const reply = completion.choices[0]?.message?.content || "⚠️ No reply from AI";
+    const reply =
+      completion.choices[0]?.message?.content || "⚠️ No reply from AI";
 
     res.json({ reply });
   } catch (err) {
