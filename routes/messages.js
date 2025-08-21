@@ -1,62 +1,66 @@
+// routes/messages.js
 import express from "express";
 import { z } from "zod";
 import { Message } from "../models/Message.js";
 import { Session } from "../models/Session.js";
+import { auth } from "../middleware/auth.js";
 
 const router = express.Router();
 
-const createSchema = z.object({
-  sessionId: z.string().min(1),
-  role: z.enum(["user", "assistant", "system"]),
-  content: z.string().min(1),
-  categories: z.array(z.string()).optional(),
-  scores: z
-    .object({
-      depression: z.number().min(0).max(100).optional(),
-      stress: z.number().min(0).max(100).optional(),
-      anxiety: z.number().min(0).max(100).optional(),
-    })
-    .optional(),
-  sentiment: z.enum(["pos", "neu", "neg"]).optional(),
+// ✅ Schema for validation
+const messageSchema = z.object({
+  sessionId: z.string().min(1, "Session ID is required"),
+  sender: z.enum(["user", "bot"]),
+  text: z.string().min(1, "Message cannot be empty").max(2000),
+  emotion: z.string().optional(), // e.g. "happy", "sad"
+  sentiment: z.string().optional(), // e.g. "positive", "negative"
 });
 
-router.post("/", async (req, res) => {
+// ✅ Add new message
+router.post("/",auth, async (req, res) => {
   try {
-    const data = createSchema.parse(req.body);
+    const data = messageSchema.parse(req.body);
+
+    // Ensure session exists & belongs to user
     const session = await Session.findOne({
       _id: data.sessionId,
       user: req.user._id,
     });
-    if (!session) return res.status(404).json({ message: "Session not found" });
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
 
-    const msg = await Message.create({
-      session: data.sessionId,
+    const message = await Message.create({
+      ...data,
       user: req.user._id,
-      role: data.role,
-      content: data.content,
-      categories: data.categories,
-      scores: data.scores,
-      sentiment: data.sentiment,
     });
 
-    res.status(201).json(msg);
+    return res.status(201).json(message);
   } catch (err) {
     if (err?.issues) return res.status(400).json({ message: err.issues[0].message });
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
-router.get("/", async (req, res) => {
-  const { sessionId } = req.query;
-  if (!sessionId) return res.status(400).json({ message: "sessionId required" });
+// ✅ Get messages of a session
+router.get("/:sessionId",auth, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
 
-  const session = await Session.findOne({ _id: sessionId, user: req.user._id });
-  if (!session) return res.status(404).json({ message: "Session not found" });
+    // Verify session belongs to user
+    const session = await Session.findOne({ _id: sessionId, user: req.user._id });
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
 
-  const messages = await Message.find({ session: sessionId })
-    .sort({ createdAt: 1 })
-    .lean();
-  res.json(messages);
+    const messages = await Message.find({ sessionId, user: req.user._id })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    return res.json(messages);
+  } catch (err) {
+    return res.status(500).json({ message: "Server error" });
+  }
 });
 
 export default router;

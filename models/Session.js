@@ -18,8 +18,17 @@ const sessionSchema = new mongoose.Schema(
     finalScores: { type: moodSchema, default: () => ({}) },
     tags: [{ type: String, trim: true }],
     notes: { type: String, trim: true },
+    isActive: { type: Boolean, default: true }, // useful for ongoing sessions
+
   },
   { timestamps: true }
 );
+// Auto-mark ended sessions
+sessionSchema.methods.endSession = function (finalScores = {}) {
+  this.endedAt = new Date();
+  this.finalScores = { ...this.finalScores, ...finalScores };
+  this.isActive = false;
+  return this.save();
+};
 
 export const Session = mongoose.model("Session", sessionSchema);

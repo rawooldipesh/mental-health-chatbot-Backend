@@ -1,24 +1,57 @@
 // backend/routes/chatRoutes.js
 import express from "express";
 import OpenAI from "openai";
+import { auth } from "../middleware/auth.js";
+import { Session } from "../models/Session.js";
+import { Message } from "../models/Message.js";
 
 const router = express.Router();
 
-// setup openai client with API key from .env
+// OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Helper: map DB message -> client shape your app expects
+function toClient(m) {
+  return {
+    sender: m.role === "assistant" ? "bot" : "user",
+    text: m.content,
+    createdAt: m.createdAt,
+  };
+}
+
 // POST /api/chat/send
-router.post("/send", async (req, res) => {
+router.post("/send", auth, async (req, res) => {
   try {
-    const { message } = req.body;
-    if (!message) {
-      return res.status(400).json({ message: "Message required" });
+    const { message, sessionId } = req.body;
+
+    if (!message || !sessionId) {
+      return res
+        .status(400)
+        .json({ message: "Message and sessionId are required" });
     }
 
-    console.log("User message:", message);
+    // Ensure the session exists and belongs to the current user
+    const session = await Session.findOne({
+      _id: sessionId,
+      user: req.user._id,
+    });
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
 
+    // 1) Save USER message (explicit role mapping)
+    await Message.create({
+      session: session._id,
+      user: req.user._id,
+      role: "user",
+      sender: "user",        
+
+      content: message,
+    });
+
+    // 2) Call OpenAI
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -35,12 +68,53 @@ router.post("/send", async (req, res) => {
     });
 
     const reply =
-      completion.choices[0]?.message?.content || "⚠️ No reply from AI";
+      completion.choices?.[0]?.message?.content || "⚠️ No reply from AI";
 
-    res.json({ reply });
+    // 3) Save ASSISTANT message
+    await Message.create({
+      session: session._id,
+      user: req.user._id,
+      role: "assistant",
+      sender: "bot",
+      content: reply,
+    });
+
+    // 4) Return reply
+    return res.json({ reply });
   } catch (err) {
     console.error("Chat error:", err.response?.data || err.message);
-    res.status(500).json({ message: err.message || "Chat failed" });
+    return res.status(500).json({ message: err.message || "Chat failed" });
+  }
+});
+
+// GET /api/chat/history/:sessionId
+router.get("/history/:sessionId", auth, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Ensure the session exists and belongs to the current user
+    const session = await Session.findOne({
+      _id: sessionId,
+      user: req.user._id,
+    });
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+
+    // IMPORTANT: query by `session` field, not `sessionId`
+    const messages = await Message.find({
+      session: sessionId,
+      user: req.user._id,
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    // Map to frontend-friendly shape
+    const out = messages.map(toClient);
+    return res.json(out);
+  } catch (err) {
+    console.error("Error fetching chat history:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 

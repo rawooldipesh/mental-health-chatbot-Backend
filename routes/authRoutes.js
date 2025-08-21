@@ -1,11 +1,12 @@
 // routes/authRoutes.js
 import express from "express";
 import jwt from "jsonwebtoken";
-import { User } from "../models/user.js"; // adjust path if needed
+import { User } from "../models/User.js"; // adjust path if needed
 
 const router = express.Router();
 
 // POST /auth/register
+
 router.post("/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -26,14 +27,25 @@ router.post("/register", async (req, res) => {
     const user = new User({ name, email, password });
     await user.save();
 
-    res
-      .status(201)
-      .json({ id: user._id, email: user.email, message: "User registered successfully" });
+    // generate JWT
+    const token = jwt.sign(
+      { sub: user._id.toString(), email: user.email  },
+      process.env.JWT_SECRET || "default_secret", // use env var in production
+      { expiresIn: "1h" }
+    );
+
+    res.status(201).json({
+      message: "User registered successfully",
+      token,
+      user: { id: user._id, email: user.email, name: user.name },
+    });
   } catch (err) {
     console.error("Register error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
 
 // POST /auth/login
 router.post("/login", async (req, res) => {
@@ -60,7 +72,7 @@ router.post("/login", async (req, res) => {
 
     // generate JWT
     const token = jwt.sign(
-      { id: user._id, email: user.email },
+      { sub: user._id.toString(), email: user.email  },
       process.env.JWT_SECRET || "default_secret", // use env var in production
       { expiresIn: "1h" }
     );
@@ -68,7 +80,7 @@ router.post("/login", async (req, res) => {
     res.json({
       message: "Login successful",
       token,
-      user: { id: user._id, email: user.email },
+      user: { id: user._id, email: user.email,name:user.name },
     });
   } catch (err) {
     console.error("Login error:", err);
