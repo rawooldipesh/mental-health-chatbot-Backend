@@ -1,9 +1,9 @@
-// routes/sessions.js
 import express from "express";
 import { z } from "zod";
 import { Session } from "../models/Session.js";
-import { Message } from "../models/Message.js"; // so we can include messages later
-import {auth} from "../middleware/auth.js"; // ✅ ensure user is attached
+import { Message } from "../models/Message.js";
+import { auth } from "../middleware/auth.js";
+import { getSummaryForUser } from "../utils/summarizer.js";
 
 const router = express.Router();
 
@@ -36,10 +36,19 @@ router.post("/", auth, async (req, res) => {
       user: req.user._id,
       ...data,
     });
-    return res.status(201).json({ sessionId: session._id });
+
+    // fetch existing summary if memory is enabled
+    const summaryDoc = await getSummaryForUser(req.user._id);
+
+    return res.status(201).json({
+      sessionId: session._id,
+      summary: summaryDoc?.text || "",
+    });
   } catch (err) {
     if (err?.issues) {
-      return res.status(400).json({ message: "Validation failed", errors: err.issues });
+      return res
+        .status(400)
+        .json({ message: "Validation failed", errors: err.issues });
     }
     console.error("Error starting session:", err);
     return res.status(500).json({ message: "Server error" });
@@ -70,7 +79,14 @@ router.get("/:id", auth, async (req, res) => {
       .sort({ createdAt: 1 })
       .lean();
 
-    return res.json({ ...session, messages });
+    // also return summary
+    const summaryDoc = await getSummaryForUser(req.user._id);
+
+    return res.json({
+      ...session,
+      messages,
+      summary: summaryDoc?.text || "",
+    });
   } catch (err) {
     console.error("Error fetching session:", err);
     return res.status(500).json({ message: "Server error" });
@@ -85,7 +101,7 @@ router.patch("/:id/end", auth, async (req, res) => {
 
     const session = await Session.findOneAndUpdate(
       { _id: id, user: req.user._id },
-      { $set: { finalScores: data.finalScores, endedAt: new Date() } },
+      { $set: { finalScores: data.finalScores, endedAt: new Date(), isActive: false } },
       { new: true }
     );
 
@@ -93,7 +109,9 @@ router.patch("/:id/end", auth, async (req, res) => {
     return res.json(session);
   } catch (err) {
     if (err?.issues) {
-      return res.status(400).json({ message: "Validation failed", errors: err.issues });
+      return res
+        .status(400)
+        .json({ message: "Validation failed", errors: err.issues });
     }
     console.error("Error ending session:", err);
     return res.status(500).json({ message: "Server error" });

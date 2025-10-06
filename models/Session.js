@@ -19,11 +19,14 @@ const sessionSchema = new mongoose.Schema(
     tags: [{ type: String, trim: true }],
     notes: { type: String, trim: true },
     isActive: { type: Boolean, default: true }, // useful for ongoing sessions
-
   },
   { timestamps: true }
 );
-// Auto-mark ended sessions
+
+// Indexes
+sessionSchema.index({ user: 1, createdAt: -1 });
+
+// Instance method to end a session
 sessionSchema.methods.endSession = function (finalScores = {}) {
   this.endedAt = new Date();
   this.finalScores = { ...this.finalScores, ...finalScores };
@@ -31,4 +34,14 @@ sessionSchema.methods.endSession = function (finalScores = {}) {
   return this.save();
 };
 
+// Static helpers
+sessionSchema.statics.getLatestForUser = async function (userId) {
+  return this.findOne({ user: userId }).sort({ createdAt: -1 }).lean();
+};
+
+sessionSchema.statics.getAllForUser = async function (userId) {
+  return this.find({ user: userId }).sort({ createdAt: 1 }).lean();
+};
+
 export const Session = mongoose.model("Session", sessionSchema);
+export default Session;

@@ -7,18 +7,28 @@ const messageSchema = new mongoose.Schema(
       ref: "Session",
       required: true,
     },
-    user: { type: mongoose.Schema.Types.ObjectId, ref: "User"  },
-    role: {
-  type: String,
-  enum: ["user", "assistant", "system"], // who is "talking" in AI sense
-  required: true,
-},
-sender: {
-  type: String, // or ObjectId if you want relation to User model
-  required: true,
-},
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true, // we query by user often for summarization
+    },
 
+    // OpenAI-like role: user / assistant / system
+    role: {
+      type: String,
+      enum: ["user", "assistant", "system"],
+      required: true,
+    },
+
+    // Who sent it in your app (could be user id, "bot", "system" etc.)
+    sender: {
+      type: String,
+      required: true,
+    },
+
+    // actual message text
     content: { type: String, required: true, trim: true },
+
     // Optional fields for NLP later:
     sentiment: { type: String, enum: ["pos", "neu", "neg"], default: "neu" },
     categories: [{ type: String, trim: true }], // e.g., ["depression","anxiety"]
@@ -27,15 +37,13 @@ sender: {
       stress: { type: Number, min: 0, max: 100 },
       anxiety: { type: Number, min: 0, max: 100 },
     },
-  },  
-
+  },
   { timestamps: true }
-
 );
-// Index for faster retrieval
-// This will help when fetching messages for a session
-messageSchema.index({ session: 1, createdAt: 1 }),
 
+// Indexes for faster retrieval (sessions + user queries)
+messageSchema.index({ session: 1, createdAt: 1 });
+messageSchema.index({ user: 1, createdAt: -1 });
 
 // Helper for quick tagging
 messageSchema.methods.addCategory = function (category) {
@@ -45,4 +53,25 @@ messageSchema.methods.addCategory = function (category) {
   return this.save();
 };
 
+// Static utility: get last N messages for a user across sessions (for summarizer)
+messageSchema.statics.getRecentForUser = async function (userId, limit = 50) {
+  // returns messages in chronological order
+  const docs = await this.find({ user: userId })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+  return docs.reverse();
+};
+
+// Convenient JSON transform
+messageSchema.set("toJSON", {
+  transform: (doc, ret) => {
+    ret.id = ret._id;
+    delete ret._id;
+    delete ret.__v;
+    return ret;
+  },
+});
+
 export const Message = mongoose.model("Message", messageSchema);
+export default Message;
