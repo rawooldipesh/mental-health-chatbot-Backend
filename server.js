@@ -13,8 +13,11 @@ import messageRoutes from "./routes/messages.js";
 import chatRoutes from "./routes/chatRoutes.js";
 
 
+
 // Middleware
 import { auth } from "./middleware/auth.js";
+import moodRoutes from "./routes/moodRoutes.js";
+
 
 const app = express();
 
@@ -26,7 +29,6 @@ app.use((req, res, next) => {
   res.setHeader("Vary", "Authorization");
   next();
 });
-
 // ---------------------- Middlewares ----------------------
 app.use(helmet());
 app.use(express.json({ limit: "1mb" }));
@@ -72,6 +74,9 @@ app.use(morgan("dev"));
 
 // ---------------------- Routes ----------------------
 app.use("/api/auth", authRoutes);
+
+
+app.use("/api/moods", moodRoutes);
 
 // Apply `auth` globally to protect internal APIs
 app.use("/api/sessions", auth, sessionRoutes);
