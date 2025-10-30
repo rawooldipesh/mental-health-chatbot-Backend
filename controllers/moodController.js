@@ -1,5 +1,6 @@
 // controllers/moodController.js
 import { User } from "../models/User.js";
+import mongoose from "mongoose";
 
 /**
  * GET /api/moods
@@ -81,5 +82,39 @@ export const deleteMoodByDate = async (req, res) => {
   } catch (err) {
     console.error("deleteMoodByDate error:", err);
     return res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getMoodSummary = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const summary = await User.aggregate([
+      { $match: { _id: new mongoose.Types.ObjectId(userId) } },
+      { $unwind: "$moods" },
+      {
+        $group: {
+          _id: null,
+          avgSentiment: { $avg: "$moods.sentiment" },
+          totalEntries: { $sum: 1 },
+          positive: { $sum: { $cond: [{ $gt: ["$moods.sentiment", 0] }, 1, 0] } },
+          neutral: { $sum: { $cond: [{ $eq: ["$moods.sentiment", 0] }, 1, 0] } },
+          negative: { $sum: { $cond: [{ $lt: ["$moods.sentiment", 0] }, 1, 0] } },
+        },
+      },
+    ]);
+
+    return res.json(
+      summary[0] || {
+        avgSentiment: 0,
+        totalEntries: 0,
+        positive: 0,
+        neutral: 0,
+        negative: 0,
+      }
+    );
+  } catch (err) {
+    console.error("getMoodSummary error:", err);
+    return res.status(500).json({ message: "Failed to generate mood summary" });
   }
 };
