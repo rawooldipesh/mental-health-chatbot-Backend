@@ -1,5 +1,5 @@
 import express from "express";
-import OpenAI from "openai";
+import Groq from "groq-sdk";
 import { auth } from "../middleware/auth.js";
 import { Session } from "../models/Session.js";
 import { Message } from "../models/Message.js";
@@ -8,12 +8,11 @@ import { getSummaryForUser, createOrUpdateSummary } from "../utils/summarizer.js
 
 const router = express.Router();
 
-// OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+// Groq client
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
 });
 
-// Helper: map DB message -> client shape your app expects
 function toClient(m) {
   return {
     sender: m.role === "assistant" ? "bot" : "user",
@@ -55,42 +54,46 @@ router.post("/send", auth, async (req, res) => {
     const user = await User.findById(req.user._id);
     const memoryEnabled = user?.memoryEnabled ?? true;
 
-    // Build OpenAI messages array
-    const openaiMessages = [
+    // Build Groq messages array with UPDATED PROMPT
+    const groqMessages = [
       {
         role: "system",
         content:
-          "You are EmpathAI, a supportive and empathetic mental health companion. " +
-          "Always reply in a calm, understanding, and non-judgmental way. " +
-          "Encourage positive coping strategies, active listening, and self-care. " +
-          "If the user expresses thoughts of self-harm, encourage them to seek help from a trusted person or professional, and provide resources such as helpline numbers.",
+          "You are EmpathAI, a warm and supportive mental health companion. " +
+          "Keep your responses conversational and natural - like texting a caring friend. " +
+          "IMPORTANT: Keep responses SHORT (2-4 sentences max). Be concise but caring. " +
+          "Ask follow-up questions to keep the conversation flowing naturally. " +
+          "Use a warm, empathetic tone without being overly formal or clinical. " +
+          "If the user expresses thoughts of self-harm, gently encourage them to reach out to a trusted person or helpline.",
       },
     ];
 
     if (memoryEnabled) {
       const summaryDoc = await getSummaryForUser(req.user._id);
       if (summaryDoc?.text) {
-        openaiMessages.push({
+        groqMessages.push({
           role: "system",
-          content: `Summary of user's previous chats: ${summaryDoc.text}`,
+          content: `Context from previous chats: ${summaryDoc.text}`,
         });
       }
 
       // include last 10 messages for recency context
       const recent = await Message.getRecentForUser(req.user._id, 10);
       for (const m of recent) {
-        openaiMessages.push({ role: m.role, content: m.content });
+        groqMessages.push({ role: m.role, content: m.content });
       }
     }
 
     // Add the new user message
-    openaiMessages.push({ role: "user", content: message });
+    groqMessages.push({ role: "user", content: message });
 
-    // Call OpenAI
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: openaiMessages,
-      max_tokens: 800,
+    // Call Groq API with ADJUSTED PARAMETERS
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: groqMessages,
+      max_tokens: 150, // ✅ REDUCED from 800 (forces shorter responses)
+      temperature: 0.8, // ✅ INCREASED slightly for more natural variation
+      top_p: 0.9, // ✅ ADDED for more conversational flow
     });
 
     const reply =

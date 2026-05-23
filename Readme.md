@@ -175,16 +175,7 @@ GROQ_API_KEY=your_groq_api_key
 
 ---
 
-## 👥 Authors
 
-- **Shreya Sawant** — System design & integration
-- **Nikhil Patil** — Backend development & API design
-- **Dipesh Rawool** — Database architecture & sentiment module
-
-**Guided by:** Mrs. Manasi Deore & Mrs. Radhika Pachghare
-A.C. Patil College of Engineering, Kharghar, Navi Mumbai
-
----
 
 ## 📄 License
 
